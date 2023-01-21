@@ -1,4 +1,4 @@
-""" jsvr.py handles the interactions with the Azure and Open AI APIs. 
+""" jsvr.py handles the interactions with the Azure and Open AI APIs
 This server is called by jsh and by a react front end.
 It can be used to:
 1. Store facts in the Azure blob storage
@@ -25,42 +25,68 @@ PROMPT_DELIMITER = "###!###"
 RESPONSE_DELIMITER = "###????###"
 
 # Set these values to your OpenAI API key and model
-oac = openaicli.OpenAICli(os.getenv("OPENAI_API_KEY"))
-azc = azurecli.AzureCli(account_name, container_name, account_url, client_id, client_secret, tenant_id)
+oa_c = openaicli.OpenAICli(os.getenv("OPENAI_API_KEY"))
+az_c = azurecli.AzureCli(account_name, container_name, account_url, \
+        client_id, client_secret, tenant_id)
 private_model = os.environ.get("OPENAI_PRIVATE_MODEL")
-public_model = "text-davinci-003"
+PUBLIC_MODEL = "text-davinci-003"
 
 class ResponseType(Enum):
-    Text = 1
-    Image = 2
-    Code = 3
+    """Enum for the type of response expected from the server"""
+    TEXT = 1
+    IMAGE = 2
+    CODE = 3
 
-public_conversation_history=""
-private_conversation_history=""
+class ConversationHistory():
+    """Class to hold the conversation history for the public and private models"""
+    def __init__(self):
+        self.public_history = ""
+        self.private_history = ""
+
+    def reset_history(self):
+        """Reset the conversation history for both models"""
+        self.public_history = ""
+        self.private_history = ""
+
+    def get_conversation_history(self, history_type):
+        """Get the conversation history for the specified model"""
+        if history_type == "private":
+            return self.private_history
+        return self.public_history
+
+    def set_conversation_history(self, history, history_type):
+        """Set the conversation history for the specified model"""
+        if history_type == "private":
+            self.private_history = history
+        else:
+            self.public_history = history
 
 def default_filename():
+    """Create a default filename for the training file"""
     now = datetime.datetime.now()
     return f'training.{now.strftime("%Y%m%d%H%M%S")}.jsonl'
 
 def default_blob_name():
+    """Create a default filename for the blob"""
     now = datetime.datetime.now()
     return f'blob.{now.strftime("%Y%m%d%H%M%S")}.json'
 
-# Create a function to retrieve all JSON objects from all blobs
 def create_training_file():
+    """Create a training file from the JSON objects in the Azure blob storage"""
     # Iterate through the blobs and print their contents to a file
     filename = default_filename()
 
     with open(filename, "w", encoding='utf8') as output_file:
-        blobs = azc.get_blob_list()
-        
+        blobs = az_c.get_blob_list()
+
         # Iterate through the blobs
         for blob in blobs:
 
             # Retrieve the JSON object from the blob
-            fact = azc.get_json_from_blob(blob.name)
-            
-            facttext = {'prompt': fact['prompt']+PROMPT_DELIMITER, 'completion': ' '+fact['completion']+RESPONSE_DELIMITER}
+            fact = az_c.get_json_from_blob(blob.name)
+
+            facttext = {'prompt': fact['prompt']+PROMPT_DELIMITER, \
+                 'completion': ' '+fact['completion']+RESPONSE_DELIMITER}
 
             # Print the JSON object to the file
             output_file.write(json.dumps(facttext))
@@ -69,57 +95,53 @@ def create_training_file():
     # The output file should now contain the contents of all blobs, one per line
 
 def delete_all_blobs():
-    blobs = azc.get_blob_list()
+    """Delete all blobs from the Azure blob storage"""
+    blobs = az_c.get_blob_list()
     for blob in blobs:
-        azc.delete_blob(blob.name)
+        az_c.delete_blob(blob.name)
 
-def get_text_response(text, type, model):
-    global public_conversation_history
-    global private_conversation_history
-        
-    if type == "private":
-        conversation_history = private_conversation_history
-    else:
-        conversation_history = public_conversation_history
+def get_text_response(text, conversation_type, model):
+    """Get the text response from the OpenAI API"""
+
+    c_h = conversation_history.get_conversation_history(conversation_type)
 
     # Add the text to the conversation history -- do this only for text and code
-    conversation_history = conversation_history[-2000:] + "\nQuestion: "+ text 
-    print("Conversation:"+conversation_history)
+    c_h = c_h[-2000:] + "\nQuestion: "+ text
+    print("Conversation:"+c_h)
 
-    responsetext = oac.get_text_response(conversation_history+PROMPT_DELIMITER, model)
-    responsetext = responsetext.replace("Answer:", "", 1).lstrip()
-    responsetext = responsetext.replace(RESPONSE_DELIMITER, "").lstrip()
-    responsetext = responsetext.replace("?", "").lstrip()
-        
+    response_text = oa_c.get_text_response(c_h+PROMPT_DELIMITER, model)
+    response_text = response_text.replace("Answer:", "", 1).lstrip()
+    response_text = response_text.replace(RESPONSE_DELIMITER, "").lstrip()
+    response_text = response_text.replace("?", "").lstrip()
+
     # Add the response to the conversation history
-    conversation_history = conversation_history + "\nAnswer: "+ responsetext
-    if type == "private":
-        private_conversation_history = conversation_history 
-    else:
-        public_conversation_history = conversation_history
+    c_h = c_h + "\nAnswer: "+ response_text
+    conversation_history.set_conversation_history(c_h, conversation_type)
 
-    return (responsetext)
+    return response_text
 
-def get_response(text, type, model):         
+def get_response(text, conversation_type, model):
+    """Get the response from the OpenAI API"""
     # get the response type in the form of text, image or code
-    responsetype = oac.classify(text, model)
+    response_type = oa_c.classify(text, model)
 
-    if responsetype.__contains__("Code"):
+    if "Code" in response_type:
         # generate code format it properly
         response=get_text_response(text, type, model).strip()
-        rtype = ResponseType.Code
-    elif responsetype.__contains__("Image"):
+        rtype = ResponseType.CODE
+    elif "Image" in response_type:
         # generate an image and format it properly
-        response = oac.get_image_url(text)
-        rtype = ResponseType.Image
+        response = oa_c.get_image_url(text)
+        rtype = ResponseType.IMAGE
     else: #assume text for everything else
-        response=get_text_response(text, type, model).strip()
-        rtype = ResponseType.Text
+        response=get_text_response(text, conversation_type, model).strip()
+        rtype = ResponseType.TEXT
 
     return rtype,response
 
 def write_fact(jsonfact):
-    azc.store_json_in_blob(jsonfact, default_blob_name())
+    """Write the fact to the Azure blob storage"""
+    az_c.store_json_in_blob(jsonfact, default_blob_name())
 
 app = Flask(__name__)
 
@@ -130,36 +152,33 @@ CORS(app)
 
 @app.route('/', methods=['POST'])
 def handle_data():
+    """Handle the data from the client"""
     print("Processing JSON data...")
 
     data = request.get_json()
     #data = json.loads(request.json)
 
     text = data['text']
-    type = data['type']
+    conversation_type = data['type']
     command = data['command']
 
     output = {}
     if command == "get-response":
         # Return the text as-is
-        if (type == 'public'):
-            model = public_model
-        elif (type == 'private'):
+        if conversation_type == 'public':
+            model = PUBLIC_MODEL
+        elif conversation_type == 'private':
             model = private_model
         else :
-            model = type
+            model = conversation_type
 
         print("Model: " + model)
         rtype, response = get_response(text, type, model)
         output = {'type': rtype.name, 'text': response}
 
     elif command == "clear-history":
-        global public_conversation_history
-        global private_conversation_history
-
         # clear public and private conversation history
-        public_conversation_history = ""
-        private_conversation_history = ""
+        conversation_history.reset_history()
 
         output = {'type': 'Text', 'text': "History cleared."}
     elif command == "write-fact":
@@ -167,14 +186,14 @@ def handle_data():
         write_fact(text)
     elif command == "create-training-file":
         # create the training file
-        create_training_file()  
+        create_training_file()
     elif command == "kill-all-facts":
         # delete all the facts
         # delete_all_blobs()
         print("Functionality is disabled to prevent accidental deletion of all facts.")
     else :
-        print("Unknown command:" + command) 
-        
+        print("Unknown command:" + command)
+
     returnoutput = jsonify(output)
     print("Returning: " + returnoutput.get_data(as_text=True))
 
@@ -182,4 +201,5 @@ def handle_data():
     return returnoutput
 
 if __name__ == '__main__':
+    conversation_history = ConversationHistory()
     app.run()
