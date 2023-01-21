@@ -1,16 +1,18 @@
+""" jsvr.py handles the interactions with the Azure and Open AI APIs. 
+This server is called by jsh and by a react front end.
+It can be used to:
+1. Store facts in the Azure blob storage
+2. Create an OpenAI training file from the facts in the Azure blob storage
+3. Enable an interactive chat session with the Open AI public or fine tuned model
+"""
 import os
-import time
-import webbrowser
-import random
-import io
 from enum import Enum
+import datetime
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import azurecli
 import openaicli
-import random
-import datetime
-import json
 
 # Set these values to your storage account and container
 account_name = os.environ.get("AZURE_STORAGE_ACCOUNT_NAME")
@@ -19,8 +21,8 @@ account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
 client_id=os.environ.get("AZURE_CLIENT_ID")
 client_secret=os.environ.get("AZURE_CLIENT_SECRET")
 tenant_id=os.environ.get("AZURE_TENANT_ID")
-prompt_delimiter = "###!###"
-response_delimiter = "###????###"
+PROMPT_DELIMITER = "###!###"
+RESPONSE_DELIMITER = "###????###"
 
 # Set these values to your OpenAI API key and model
 oac = openaicli.OpenAICli(os.getenv("OPENAI_API_KEY"))
@@ -37,19 +39,19 @@ public_conversation_history=""
 private_conversation_history=""
 
 def default_filename():
-  now = datetime.datetime.now()
-  return f'training.{now.strftime("%Y%m%d%H%M%S")}.jsonl'
+    now = datetime.datetime.now()
+    return f'training.{now.strftime("%Y%m%d%H%M%S")}.jsonl'
 
 def default_blob_name():
-  now = datetime.datetime.now()
-  return f'blob.{now.strftime("%Y%m%d%H%M%S")}.json'
+    now = datetime.datetime.now()
+    return f'blob.{now.strftime("%Y%m%d%H%M%S")}.json'
 
 # Create a function to retrieve all JSON objects from all blobs
 def create_training_file():
     # Iterate through the blobs and print their contents to a file
     filename = default_filename()
 
-    with open(filename, "w") as output_file:
+    with open(filename, "w", encoding='utf8') as output_file:
         blobs = azc.get_blob_list()
         
         # Iterate through the blobs
@@ -58,7 +60,7 @@ def create_training_file():
             # Retrieve the JSON object from the blob
             fact = azc.get_json_from_blob(blob.name)
             
-            facttext = {'prompt': fact['prompt']+prompt_delimiter, 'completion': ' '+fact['completion']+response_delimiter}
+            facttext = {'prompt': fact['prompt']+PROMPT_DELIMITER, 'completion': ' '+fact['completion']+RESPONSE_DELIMITER}
 
             # Print the JSON object to the file
             output_file.write(json.dumps(facttext))
@@ -72,47 +74,47 @@ def delete_all_blobs():
         azc.delete_blob(blob.name)
 
 def get_text_response(text, type, model):
-  global public_conversation_history
-  global private_conversation_history
-    
-  if type == "private":
-      conversation_history = private_conversation_history
-  else:
-      conversation_history = public_conversation_history
+    global public_conversation_history
+    global private_conversation_history
+        
+    if type == "private":
+        conversation_history = private_conversation_history
+    else:
+        conversation_history = public_conversation_history
 
-  # Add the text to the conversation history -- do this only for text and code
-  conversation_history = conversation_history[-2000:] + "\nQuestion: "+ text 
-  print("Conversation:"+conversation_history)
+    # Add the text to the conversation history -- do this only for text and code
+    conversation_history = conversation_history[-2000:] + "\nQuestion: "+ text 
+    print("Conversation:"+conversation_history)
 
-  responsetext = oac.get_text_response(conversation_history+prompt_delimiter, model)
-  responsetext = responsetext.replace("Answer:", "", 1).lstrip()
-  responsetext = responsetext.replace(response_delimiter, "").lstrip()
-  responsetext = responsetext.replace("?", "").lstrip()
-    
-  # Add the response to the conversation history
-  conversation_history = conversation_history + "\nAnswer: "+ responsetext
-  if type == "private":
-    private_conversation_history = conversation_history 
-  else:
-    public_conversation_history = conversation_history
+    responsetext = oac.get_text_response(conversation_history+PROMPT_DELIMITER, model)
+    responsetext = responsetext.replace("Answer:", "", 1).lstrip()
+    responsetext = responsetext.replace(RESPONSE_DELIMITER, "").lstrip()
+    responsetext = responsetext.replace("?", "").lstrip()
+        
+    # Add the response to the conversation history
+    conversation_history = conversation_history + "\nAnswer: "+ responsetext
+    if type == "private":
+        private_conversation_history = conversation_history 
+    else:
+        public_conversation_history = conversation_history
 
-  return (responsetext)
+    return (responsetext)
 
 def get_response(text, type, model):         
     # get the response type in the form of text, image or code
     responsetype = oac.classify(text, model)
 
     if responsetype.__contains__("Code"):
-      # generate code format it properly
-      response=get_text_response(text, type, model).strip()
-      rtype = ResponseType.Code
+        # generate code format it properly
+        response=get_text_response(text, type, model).strip()
+        rtype = ResponseType.Code
     elif responsetype.__contains__("Image"):
-      # generate an image and format it properly
-      response = oac.get_image_url(text)
-      rtype = ResponseType.Image
+        # generate an image and format it properly
+        response = oac.get_image_url(text)
+        rtype = ResponseType.Image
     else: #assume text for everything else
-      response=get_text_response(text, type, model).strip()
-      rtype = ResponseType.Text
+        response=get_text_response(text, type, model).strip()
+        rtype = ResponseType.Text
 
     return rtype,response
 
