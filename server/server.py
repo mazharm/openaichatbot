@@ -1,5 +1,6 @@
-""" jsvr.py handles the interactions with the Azure and Open AI APIs
-This server is called by jsh and by a react front end.
+""" This is the main server model. The takes calls from the command line and UX clients
+It handles the interactions with the Azure and Open AI APIs
+This server is called by the command line and by a react front end.
 It can be used to:
 1. Store facts in the Azure blob storage
 2. Create an OpenAI training file from the facts in the Azure blob storage

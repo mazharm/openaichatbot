@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './jux.css';
+import './App.css';
 import Highlight from 'react-highlight';import SyntaxHighlighter from 'react-syntax-highlighter';
 import { vs2015 } from 'react-syntax-highlighter/dist/cjs/styles/hljs';
 import { CopyToClipboard } from 'react-copy-to-clipboard';

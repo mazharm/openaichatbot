@@ -1,10 +1,11 @@
-""" jsh.py is a command line client to jsvr.py. It can be used to:
+""" This is a command line client to the chatbot server. It can be used to:
 1. Upload facts to the cloud (Azure blob storage)
 2. Create a training file from the cloud (from Azure blob storage)
 3. Start an interactive chat session using the Open AI public or fine tuned model
 
-The interactions with the Azure and Open AI APIs are handled by jsvr.py. This logic is
-encapsulated in the server to allow it to be callable by jsh and by a react front end.
+The interactions with the Azure and Open AI APIs are handled by the server. This logic is
+encapsulated in the server to allow it to be callable by a command line and 
+by a react front end.
 """
 import os
 import io
@@ -12,7 +13,7 @@ import argparse
 import json
 import requests
 
-JSVR_URL = 'http://localhost:5000'
+SERVER_URL = 'http://localhost:5000'
 APP_ID = os.environ.get('APP_ID')
 
 def get_location():
@@ -45,11 +46,11 @@ def get_weather():
 
 def call_server(input_text, command):
     """
-    This is a command line client to jsvr.py
+    This is a command line client to the chatbot server
     It can be used to create a training file from the cloud and upload facts to the cloud
     It can also be used to start an interactive chat session with the cloud
 
-    This function calls jsvr. Possible commands are:
+    This function calls the chat server. Possible commands are:
     get-response: get a response from the cloud
     clear-history: clear the chat history
     write-fact: write a fact to the cloud
@@ -57,7 +58,7 @@ def call_server(input_text, command):
     headers = {'Content-Type': 'application/json'}
     data = {'text': input_text, 'command': command}
 
-    response = requests.post(JSVR_URL, headers=headers, json=data, timeout=10)
+    response = requests.post(SERVER_URL, headers=headers, json=data, timeout=10)
 
     if response.status_code == 200:
         result = json.loads(response.text)
@@ -82,7 +83,7 @@ def interactive_fact_upload():
     """
     Upload facts to the cloud (Azure blob storage) interactively
     fact delimiters are use to separate facts in the training file
-    they are inserted by jsvr.py when creating the training file
+    they are inserted by the server when creating the training file
     """
     while True:
         question = input("Question> ")
@@ -108,7 +109,7 @@ def interactive_chat():
 
 def clear_history():
     """
-    Clear the interactive chat history in jsvr.py
+    Clear the interactive chat history on the server
     this is different from the kill-all-facts command which deletes all facts in the cloud
     The chat history is transient and is not stored in the cloud. It is best to clear this history
     when starting a conversation about a new topic
@@ -120,7 +121,7 @@ def clear_history():
 def kill_all_facts():
     """
     kill all facts -- dangerous function -- use with care!
-    disabled by default in jsvr.py to prevent accidental deletion of cloud data
+    disabled by default on the server to prevent accidental deletion of cloud data
     """
     print('Killing all facts in the cloud')
     output = call_server('', 'kill-all-facts')
