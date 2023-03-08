@@ -60,12 +60,12 @@ def loadfacts():
     Load the facts from the JSONL file
     """
     # Open the JSONL file in read mode
-    with open("output.jsonl", 'r', encoding='utf8') as f:
+    with open("output.jsonl", 'r', encoding='utf8') as fact_f:
         # Initialize an empty list to store the parsed JSON objects
         json_list = []
 
         # Iterate through each line in the file
-        for line in f:
+        for line in fact_f:
             # Parse the JSON object from the line
             json_obj = json.loads(line)
             # Add the parsed JSON object to the list
